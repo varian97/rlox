@@ -1,4 +1,11 @@
 #[derive(Debug)]
+pub enum Literal {
+    Str(String),
+    Num(f64),
+    Nil,
+}
+
+#[derive(Debug)]
 pub enum TokenType {
     // Single-character tokens
     LeftParen,
@@ -54,19 +61,29 @@ pub struct Token {
     pub token_type: TokenType,
     pub lexeme: String,
     pub line_number: usize,
+    pub literal: Option<Literal>,
 }
 
 impl Token {
-    pub fn new(token_type: TokenType, lexeme: String, line_number: usize) -> Self {
+    pub fn new(
+        token_type: TokenType,
+        lexeme: String,
+        literal: Option<Literal>,
+        line_number: usize,
+    ) -> Self {
         Token {
             token_type,
             lexeme,
             line_number,
+            literal: match literal {
+                Some(literal) => Some(literal),
+                None => None,
+            },
         }
     }
 
     pub fn to_string(&self) -> String {
-        format!("{:?} {} {}", self.token_type, self.lexeme, self.line_number)
+        format!("{:?} {} {:?}", self.token_type, self.lexeme, self.literal)
     }
 }
 
@@ -95,8 +112,12 @@ impl Scanner {
             self.scan_token();
         }
 
-        self.tokens
-            .push(Token::new(TokenType::Eof, String::from(""), self.line));
+        self.tokens.push(Token::new(
+            TokenType::Eof,
+            String::from(""),
+            None,
+            self.line,
+        ));
     }
 
     fn is_at_end(&self) -> bool {
