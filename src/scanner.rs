@@ -100,7 +100,7 @@ impl Token {
 }
 
 pub struct Scanner {
-    pub source: String,
+    pub source: Vec<u8>,
     pub tokens: Vec<Token>,
     start: usize,
     current: usize,
@@ -110,7 +110,7 @@ pub struct Scanner {
 impl Scanner {
     pub fn new(source: String) -> Self {
         Scanner {
-            source,
+            source: source.into_bytes(),
             tokens: vec![],
             start: 0,
             current: 0,
@@ -128,51 +128,133 @@ impl Scanner {
         Ok(&self.tokens)
     }
 
-    fn is_at_end(&self) -> bool {
-        self.current >= self.source.len()
-    }
-
     fn scan_token(&mut self) -> Result<(), RloxErrorDetail> {
         let c = self.advance();
 
         match c {
-            '(' => self.add_token(TokenType::LeftParen),
-            ')' => self.add_token(TokenType::RightParen),
-            '{' => self.add_token(TokenType::LeftBrace),
-            '}' => self.add_token(TokenType::RightBrace),
-            ',' => self.add_token(TokenType::Comma),
-            '.' => self.add_token(TokenType::Dot),
-            '-' => self.add_token(TokenType::Minus),
-            '+' => self.add_token(TokenType::Plus),
-            ';' => self.add_token(TokenType::Semicolon),
-            '*' => self.add_token(TokenType::Star),
+            '(' => self.add_token_without_literal(TokenType::LeftParen),
+            ')' => self.add_token_without_literal(TokenType::RightParen),
+            '{' => self.add_token_without_literal(TokenType::LeftBrace),
+            '}' => self.add_token_without_literal(TokenType::RightBrace),
+            ',' => self.add_token_without_literal(TokenType::Comma),
+            '.' => self.add_token_without_literal(TokenType::Dot),
+            '-' => self.add_token_without_literal(TokenType::Minus),
+            '+' => self.add_token_without_literal(TokenType::Plus),
+            ';' => self.add_token_without_literal(TokenType::Semicolon),
+            '*' => self.add_token_without_literal(TokenType::Star),
+            '!' => {
+                let match_next = self.is_next_char_match('=');
+                if match_next {
+                    self.add_token_without_literal(TokenType::BangEqual)
+                } else {
+                    self.add_token_without_literal(TokenType::Bang)
+                }
+            }
+            '=' => {
+                let match_next = self.is_next_char_match('=');
+                if match_next {
+                    self.add_token_without_literal(TokenType::EqualEqual)
+                } else {
+                    self.add_token_without_literal(TokenType::Equal)
+                }
+            }
+            '<' => {
+                let match_next = self.is_next_char_match('=');
+                if match_next {
+                    self.add_token_without_literal(TokenType::LessEqual)
+                } else {
+                    self.add_token_without_literal(TokenType::Less)
+                }
+            }
+            '>' => {
+                let match_next = self.is_next_char_match('=');
+                if match_next {
+                    self.add_token_without_literal(TokenType::GreaterEqual)
+                } else {
+                    self.add_token_without_literal(TokenType::Greater)
+                }
+            }
+            '/' => {
+                let match_comment = self.is_next_char_match('/');
+                if match_comment {
+                    while !self.is_at_end() && self.peek() != '\n' {
+                        self.advance();
+                    }
+                } else {
+                    self.add_token_without_literal(TokenType::Slash)?;
+                }
+                Ok(())
+            }
             '\n' => {
                 self.line += 1;
+                Ok(())
             }
+            ' ' | '\r' | '\t' => Ok(()),
             _ => {
                 return Err(RloxErrorDetail::new(
                     self.line,
                     "Unexpected Token".to_string(),
                 ))
             }
-        };
+        }?;
 
         Ok(())
     }
 
+    fn is_at_end(&self) -> bool {
+        self.current >= self.source.len()
+    }
+
     fn advance(&mut self) -> char {
-        let res = self.source.as_bytes()[self.current];
+        let res = self.source[self.current];
         self.current += 1;
         res as char
     }
 
-    fn add_token(&mut self, token_type: TokenType) {
-        self.add_token_object(token_type, None);
+    fn is_next_char_match(&mut self, expected: char) -> bool {
+        if self.is_at_end() {
+            return false;
+        }
+        if self.peek() != expected {
+            return false;
+        }
+
+        self.current += 1;
+        return true;
     }
 
-    fn add_token_object(&mut self, token_type: TokenType, literal: Option<Literal>) {
-        let text = self.source[self.start..self.current].to_string();
+    fn peek(&self) -> char {
+        if self.is_at_end() {
+            return '\0';
+        }
+        self.source[self.current] as char
+    }
+
+    fn add_token_without_literal(&mut self, token_type: TokenType) -> Result<(), RloxErrorDetail> {
+        self.add_token_object(token_type, None)?;
+        Ok(())
+    }
+
+    fn add_token_object(
+        &mut self,
+        token_type: TokenType,
+        literal: Option<Literal>,
+    ) -> Result<(), RloxErrorDetail> {
+        let buf = &self.source[self.start..self.current];
+
+        let text = match std::str::from_utf8(buf) {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                return Err(RloxErrorDetail::new(
+                    self.line,
+                    "Invalid UTF-8 sequence".to_string(),
+                ));
+            }
+        };
+
         self.tokens
             .push(Token::new(token_type, text, literal, self.line));
+
+        Ok(())
     }
 }
