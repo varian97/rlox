@@ -190,11 +190,16 @@ impl Scanner {
                 Ok(())
             }
             ' ' | '\r' | '\t' => Ok(()),
-            _ => {
+            '"' => self.add_string_token(),
+            other => {
+                if self.is_digit(other) {
+                    return self.add_number_token();
+                }
+
                 return Err(RloxErrorDetail::new(
                     self.line,
                     "Unexpected Token".to_string(),
-                ))
+                ));
             }
         }?;
 
@@ -205,10 +210,30 @@ impl Scanner {
         self.current >= self.source.len()
     }
 
+    fn is_digit(&self, ch: char) -> bool {
+        ch >= '0' && ch <= '9'
+    }
+
     fn advance(&mut self) -> char {
         let res = self.source[self.current];
         self.current += 1;
         res as char
+    }
+
+    fn substring(&self, start: usize, end: usize) -> Result<String, RloxErrorDetail> {
+        let buf = &self.source[start..end];
+
+        let text = match std::str::from_utf8(buf) {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                return Err(RloxErrorDetail::new(
+                    self.line,
+                    "Invalid UTF-8 sequence".to_string(),
+                ));
+            }
+        };
+
+        Ok(text)
     }
 
     fn is_next_char_match(&mut self, expected: char) -> bool {
@@ -230,9 +255,60 @@ impl Scanner {
         self.source[self.current] as char
     }
 
+    fn peek_next(&self) -> char {
+        if self.is_at_end() || self.current == self.source.len() - 1 {
+            return '\0';
+        }
+        self.source[self.current + 1] as char
+    }
+
     fn add_token_without_literal(&mut self, token_type: TokenType) -> Result<(), RloxErrorDetail> {
         self.add_token_object(token_type, None)?;
         Ok(())
+    }
+
+    fn add_string_token(&mut self) -> Result<(), RloxErrorDetail> {
+        while !self.is_at_end() && self.peek() != '"' {
+            let curr = self.peek();
+            if curr == '\n' {
+                self.line += 1;
+            }
+            self.advance();
+        }
+
+        if self.is_at_end() {
+            return Err(RloxErrorDetail {
+                line_number: self.line,
+                message: String::from("Unterminated String"),
+            });
+        }
+
+        // consume the closing "
+        self.advance();
+
+        let str_value = self.substring(self.start + 1, self.current - 1)?;
+
+        self.add_token_object(TokenType::String, Some(Literal::Str(str_value)))
+    }
+
+    fn add_number_token(&mut self) -> Result<(), RloxErrorDetail> {
+        while self.is_digit(self.peek()) {
+            self.advance();
+        }
+
+        if self.peek() == '.' && self.is_digit(self.peek_next()) {
+            self.advance();
+            while self.is_digit(self.peek()) {
+                self.advance();
+            }
+        }
+
+        let number_value = self.substring(self.start, self.current)?;
+
+        self.add_token_object(
+            TokenType::Number,
+            Some(Literal::Num(number_value.parse().unwrap())),
+        )
     }
 
     fn add_token_object(
