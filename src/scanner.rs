@@ -1,4 +1,5 @@
 use crate::error::RloxErrorDetail;
+use phf::phf_map;
 
 #[derive(Debug)]
 pub enum Literal {
@@ -8,7 +9,7 @@ pub enum Literal {
     Bool(bool),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum TokenType {
     // Single-character tokens
     LeftParen,
@@ -98,6 +99,25 @@ impl Token {
         format!("{:?} {} {:?}", self.token_type, self.lexeme, self.literal)
     }
 }
+
+static TOKEN_TYPE_BY_RESERVED_KEYWORD: phf::Map<&'static str, TokenType> = phf_map! {
+    "and" => TokenType::And,
+    "class" => TokenType::Class,
+    "else" => TokenType::Else,
+    "false" => TokenType::False,
+    "for" => TokenType::For,
+    "fun" => TokenType::Fun,
+    "if" => TokenType::If,
+    "nil" => TokenType::Nil,
+    "or" => TokenType::Or,
+    "print" => TokenType::Print,
+    "return" => TokenType::Return,
+    "super" => TokenType::Super,
+    "this" => TokenType::This,
+    "true" => TokenType::True,
+    "var" => TokenType::Var,
+    "while" => TokenType::While,
+};
 
 pub struct Scanner {
     pub source: Vec<u8>,
@@ -196,6 +216,10 @@ impl Scanner {
                     return self.add_number_token();
                 }
 
+                if self.is_alpha(other) {
+                    return self.add_identifier_token();
+                }
+
                 return Err(RloxErrorDetail::new(
                     self.line,
                     "Unexpected Token".to_string(),
@@ -212,6 +236,14 @@ impl Scanner {
 
     fn is_digit(&self, ch: char) -> bool {
         ch >= '0' && ch <= '9'
+    }
+
+    fn is_alpha(&self, ch: char) -> bool {
+        (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_'
+    }
+
+    fn is_alphanumeric(&self, ch: char) -> bool {
+        self.is_alpha(ch) || self.is_digit(ch)
     }
 
     fn advance(&mut self) -> char {
@@ -262,9 +294,18 @@ impl Scanner {
         self.source[self.current + 1] as char
     }
 
-    fn add_token_without_literal(&mut self, token_type: TokenType) -> Result<(), RloxErrorDetail> {
-        self.add_token_object(token_type, None)?;
-        Ok(())
+    fn add_identifier_token(&mut self) -> Result<(), RloxErrorDetail> {
+        while self.is_alphanumeric(self.peek()) {
+            self.advance();
+        }
+
+        let text = self.substring(self.start, self.current)?;
+        let token_type = match TOKEN_TYPE_BY_RESERVED_KEYWORD.get(&text).copied() {
+            Some(_token_type) => _token_type,
+            None => TokenType::Identifier,
+        };
+
+        self.add_token_without_literal(token_type)
     }
 
     fn add_string_token(&mut self) -> Result<(), RloxErrorDetail> {
@@ -309,6 +350,11 @@ impl Scanner {
             TokenType::Number,
             Some(Literal::Num(number_value.parse().unwrap())),
         )
+    }
+
+    fn add_token_without_literal(&mut self, token_type: TokenType) -> Result<(), RloxErrorDetail> {
+        self.add_token_object(token_type, None)?;
+        Ok(())
     }
 
     fn add_token_object(

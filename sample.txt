@@ -6,3 +6,6 @@
 newline"
 918
 908.12
+sample_variable
+class
+if
