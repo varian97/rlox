@@ -1,4 +1,20 @@
-use crate::token::{Token, Literal};
+use crate::token::{Literal, Token};
+
+pub trait ExprVisitor<T> {
+    fn visit_binary_expr(
+        &mut self,
+        left: &mut Box<Expr>,
+        operator: &mut Token,
+        right: &mut Box<Expr>,
+    ) -> T;
+    fn visit_grouping_expr(&mut self, expression: &mut Box<Expr>) -> T;
+    fn visit_literal_expr(&mut self, value: &mut Literal) -> T;
+    fn visit_unary_expr(&mut self, operator: &mut Token, right: &mut Box<Expr>) -> T;
+}
+
+pub trait ExprVisitable<T> {
+    fn accept(&mut self, visitor: &mut impl ExprVisitor<T>) -> T;
+}
 
 pub enum Expr {
     Binary {
@@ -14,22 +30,21 @@ pub enum Expr {
     },
     Unary {
         operator: Token,
-        right: Box<Expr>
-    }
+        right: Box<Expr>,
+    },
 }
 
-pub trait Visitor<T> {
-    fn accept(&mut self, expr: Expr) -> T {
-        match expr {
-            Expr::Binary{ left, operator, right } => self.visit_binary_expr(left, operator, right),
-            Expr::Grouping{ expression } => self.visit_grouping_expr(expression),
-            Expr::Literal{ value } => self.visit_literal_expr(value),
-            Expr::Unary{ operator, right } => self.visit_unary_expr(operator, right)
+impl<T> ExprVisitable<T> for Expr {
+    fn accept(&mut self, visitor: &mut impl ExprVisitor<T>) -> T {
+        match self {
+            Expr::Binary {
+                left,
+                operator,
+                right,
+            } => visitor.visit_binary_expr(left, operator, right),
+            Expr::Grouping { expression } => visitor.visit_grouping_expr(expression),
+            Expr::Literal { value } => visitor.visit_literal_expr(value),
+            Expr::Unary { operator, right } => visitor.visit_unary_expr(operator, right),
         }
     }
-
-    fn visit_binary_expr(&mut self, left: Box<Expr>, operator: Token, right: Box<Expr>) -> T;
-    fn visit_grouping_expr(&mut self, expression: Box<Expr>) -> T;
-    fn visit_literal_expr(&mut self, value: Literal) -> T;
-    fn visit_unary_expr(&mut self, operator: Token, right: Box<Expr>) -> T;
 }
